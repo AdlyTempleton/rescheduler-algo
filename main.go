@@ -115,7 +115,7 @@ func newTask(mem float64, cores float64, priority int, start int, end int) *Task
 }
 
 //realData loads a sorted list of Tasks from a file
-func realData(filename string) ([]*Task){
+func realData(filename string, taskCount int64) ([]*Task){
 	var tasks TaskSorter
 	var currentTask *Task
 
@@ -124,8 +124,8 @@ func realData(filename string) ([]*Task){
 
 	r := csv.NewReader(bufio.NewReader(file))
 
-	//Load the first 1,000,000 tasks only
-	for len(tasks) < 1000000{
+	//Load the first n tasks only
+	for len(tasks) < taskCount{
 		record, err := r.Read()
 
 		if err == io.EOF {
@@ -217,6 +217,7 @@ func main() {
 	//Load command line arguments
 	preemptiveReschedulingPtr := flag.Bool("preemptive", false, "Use preemptive scheduling")
 	backgroundReschedulingPtr := flag.Bool("background", false, "Use background rescheduler")
+	taskCountPtr := flag.Int64("taskCount", 1000000, "The number of tasks to load")
 	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 0, "Background Threshold")
 	filenamePtr := flag.String("file", "data/task_events_sorted.csv", "Filename to load data from")
 
@@ -235,7 +236,7 @@ func main() {
 	//This list is assumed to be sorted by start times
 	var futureTaskList []*Task
 	//Load data from file
-	futureTaskList = realData(*filenamePtr)
+	futureTaskList = realData(*filenamePtr, *taskCountPtr)
 
 	//Initialize an auto-scaling cluster
 	var cluster []*Node
