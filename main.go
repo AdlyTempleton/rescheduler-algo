@@ -217,7 +217,7 @@ func main() {
 	//Load command line arguments
 	preemptiveReschedulingPtr := flag.Bool("preemptive", false, "Use preemptive scheduling")
 	backgroundReschedulingPtr := flag.Bool("background", false, "Use background rescheduler")
-	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 1, "Background Threshold")
+	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 0, "Background Threshold")
 	filenamePtr := flag.String("file", "data/task_events_sorted.csv", "Filename to load data from")
 
 	flag.Parse()
