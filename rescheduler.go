@@ -40,6 +40,12 @@ func (basicRescheduler) poll(time int, cluster []*Node)(){
 				}
 			}
 
+			if maxPriorityNode != node {
+				//Generate metrics concerning the thresholds required to create some number of movements
+				hostPriotity := float64(balancedResourcePriorityExcluding(task, node, task) + leastRequestedPriorityExcluding(task, node, task))
+				fmt.Printf("RescheduleThreshold,%f,%f,%f\n", hostPriotity, maxPriority, hostPriotity - maxPriority)
+			}
+
 			if maxPriorityNode != node{
 				//Delete the old task fom the node's task list
 				_ = node.removeTask(index - deleted)
