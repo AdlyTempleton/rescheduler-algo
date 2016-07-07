@@ -74,6 +74,13 @@ func (node *Node) removeTask(i int)(task *Task){
 	return
 }
 
+//clone creates a clone of this node, including a shallow clone of tasks
+func (node *Node) clone()(*Node){
+	tmp := make([]*Task, len(node.tasks))
+	copy(tmp, node.tasks)
+	return &Node{node.name, tmp, node.cores, node.mem}
+}
+
 //getUtilization returns two floats which represent the percentage utilization of cpu and memory, respectively
 func (node *Node) getUtilization()(cores, mem float64){
 
@@ -91,7 +98,7 @@ func (node *Node) getUtilization()(cores, mem float64){
 //Scheduler represents an interface to implement different scheduling policies
 type Scheduler interface {
 	//schedule schedules a task on a cluster
-	schedule(task *Task, cluster []*Node) (node *Node, err error)
+	schedule(task *Task, cluster []*Node) (node *Node, priority int, err error)
 }
 
 //Rescheduler represents an interface to implement different rescheduling policies
@@ -100,7 +107,8 @@ type Rescheduler interface {
 	rescheduleFailedTask(task *Task, cluster []*Node, time int) (err error)
 
 	//poll moves any or all tasks to different nodes according to some algorithm
-	poll(time int, cluster []*Node)()
+	//The returned value is taken as the new state of the cluster
+	poll(time int, cluster []*Node)([]*Node)
 }
 
 //newTask is a helper method for creating a new Task which assigns an id automatically
@@ -115,7 +123,7 @@ func newTask(mem float64, cores float64, priority int, start int, end int) *Task
 }
 
 //realData loads a sorted list of Tasks from a file
-func realData(filename string, taskCount int64) ([]*Task){
+func realData(filename string, taskCount int) ([]*Task){
 	var tasks TaskSorter
 	var currentTask *Task
 
@@ -211,14 +219,17 @@ var backgroundRescheduling bool
 //backgroundReschedulingThreshold controls the aggressiveness of the background rescheduler
 var backgroundReschedulingThreshold float64
 
+var downscaling bool
+
 //Main represents the main simulation loop
 func main() {
 
 	//Load command line arguments
 	preemptiveReschedulingPtr := flag.Bool("preemptive", false, "Use preemptive scheduling")
 	backgroundReschedulingPtr := flag.Bool("background", false, "Use background rescheduler")
-	taskCountPtr := flag.Int64("taskCount", 1000000, "The number of tasks to load")
-	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 0, "Background Threshold")
+	downscalingPtr := flag.Bool("downscale", false, "Use downscaler")
+	taskCountPtr := flag.Int("taskCount", 1000000, "The number of tasks to load")
+	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 1, "Background Threshold")
 	filenamePtr := flag.String("file", "data/task_events_sorted.csv", "Filename to load data from")
 
 	flag.Parse()
@@ -226,6 +237,7 @@ func main() {
 	preemptiveRescheduling = *preemptiveReschedulingPtr
 	backgroundRescheduling = *backgroundReschedulingPtr
 	backgroundReschedulingThreshold = *backgroundReschedulingThresholdPtr
+	downscaling = *downscalingPtr
 
 	time := 0
 
@@ -245,6 +257,7 @@ func main() {
 	//Use the appropriate scheduling and rescheduling algorithms
 	var scheduler Scheduler = K8sScheduler{}
 	var rescheduler Rescheduler = basicRescheduler{}
+	var downscaler Rescheduler = basicDownscaler{}
 
 	//Main simulation loop
 	for true{
@@ -297,7 +310,7 @@ func main() {
 		for _, task := range schedulerQueue {
 			//Initial attempt at standard scheduling
 			var node *Node
-			node, err := scheduler.schedule(task, cluster)
+			node, _, err := scheduler.schedule(task, cluster)
 			if err != nil{
 				//Attempt to preemptively schedule
 				if preemptiveRescheduling {
@@ -325,7 +338,11 @@ func main() {
 
 		//Activate background rescheduling every hour
 		if backgroundRescheduling && time % 3600 == 0{
-			rescheduler.poll(time, cluster)
+			cluster = rescheduler.poll(time, cluster)
+		}
+
+		if downscaling {
+			cluster = downscaler.poll(time, cluster)
 		}
 
 		//Report utilization percentages
