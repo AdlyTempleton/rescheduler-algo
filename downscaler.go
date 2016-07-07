@@ -13,7 +13,7 @@ func (basicDownscaler) rescheduleFailedTask(task *Task, cluster []*Node, time in
 }
 
 func (basicDownscaler) poll(time int, cluster []*Node) ([]*Node){
-	threshold := .8
+	threshold := .6
 	cpuUtilization, memUtilization := getTotalUtilization(cluster)
 
 	if cpuUtilization < threshold && memUtilization < threshold{
