@@ -10,7 +10,7 @@ type K8sScheduler struct {
 }
 
 //schedule implements a rough emulation of Kubernetes' scheduling policy
-func (K8sScheduler) schedule (task *Task, cluster []*Node) (node *Node, err error){
+func (K8sScheduler) schedule (task *Task, cluster []*Node) (node *Node, priority int, err error){
 	maxPriority := -1
 	var maxPriorityNode *Node = nil
 
@@ -29,9 +29,9 @@ func (K8sScheduler) schedule (task *Task, cluster []*Node) (node *Node, err erro
 
 	//This node will equal nil iff no nodes have available CPU and memory
 	if maxPriorityNode == nil{
-		return nil, errors.New("No free nodes for scheduling")
+		return nil, 0, errors.New("No free nodes for scheduling")
 	}else{
-		return maxPriorityNode, nil
+		return maxPriorityNode, maxPriority, nil
 	}
 }
 

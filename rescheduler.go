@@ -9,7 +9,7 @@ import (
 type basicRescheduler struct{}
 
 //poll moves tasks according to the normal scheduling policies.
-func (basicRescheduler) poll(time int, cluster []*Node)(){
+func (basicRescheduler) poll(time int, cluster []*Node)([]*Node){
 	for _, node := range cluster{
 		deleted := 0
 		for index, task := range node.tasks{
@@ -57,7 +57,7 @@ func (basicRescheduler) poll(time int, cluster []*Node)(){
 			}
 		}
 	}
-	return
+	return cluster
 }
 
 //rescheduleFailedTask searches for and attempts to execute an appropriate task to preempt
@@ -75,7 +75,7 @@ func (basicRescheduler) rescheduleFailedTask (taskToAccomodate *Task, cluster []
 
 			if freeCores >= taskToAccomodate.cores && freeMem >= taskToAccomodate.mem {
 				//Check to make sure the task can be rescheduled
-				if potentialNode, _ := scheduler.schedule(task, cluster); potentialNode != nil{
+				if potentialNode, _, _ := scheduler.schedule(task, cluster); potentialNode != nil{
 					priority := balancedResourcePriorityExcluding(task, node, taskToAccomodate) + leastRequestedPriorityExcluding(task, node, taskToAccomodate)
 					if priority > maxPriority{
 						maxPriorityNode, maxPriorityTaskIndex = node, i
@@ -94,7 +94,7 @@ func (basicRescheduler) rescheduleFailedTask (taskToAccomodate *Task, cluster []
 		//Add the new task to the node's task list
 		maxPriorityNode.tasks = append(maxPriorityNode.tasks, taskToAccomodate)
 
-		nodeToRescheduleOnto, err := scheduler.schedule(bootedTask, cluster)
+		nodeToRescheduleOnto, _, err := scheduler.schedule(bootedTask, cluster)
 
 		if err != nil{
 			return errors.New("Error: Valid new homes for booted tasks have disapeared")
