@@ -12,7 +12,8 @@ type basicRescheduler struct{}
 func (basicRescheduler) poll(time int, cluster []*Node)([]*Node){
 	for _, node := range cluster{
 		deleted := 0
-		for index, task := range node.tasks{
+		for index, _ := range node.tasks{
+			task := node.tasks[index - deleted]
 			//Keep track of the maximum priority seen
 			var maxPriority float64 = -1
 			var maxPriorityNode *Node
@@ -48,7 +49,16 @@ func (basicRescheduler) poll(time int, cluster []*Node)([]*Node){
 
 			if maxPriorityNode != node{
 				//Delete the old task fom the node's task list
-				_ = node.removeTask(index - deleted)
+				removedTask := node.removeTask(index - deleted)
+
+				if removedTask != task{
+					for i, e := range node.tasks{
+						if e == task{
+
+							fmt.Printf("ERROR IN INDEXING,%d,%d,%d\n", index, deleted, i)
+						}
+					}
+				}
 				//Add the new task to the node's task list
 				maxPriorityNode.tasks = append(maxPriorityNode.tasks, task)
 				deleted++
@@ -97,6 +107,7 @@ func (basicRescheduler) rescheduleFailedTask (taskToAccomodate *Task, cluster []
 		nodeToRescheduleOnto, _, err := scheduler.schedule(bootedTask, cluster)
 
 		if err != nil{
+			fmt.Println("Error: Valid new homes for booted tasks have disapeared")
 			return errors.New("Error: Valid new homes for booted tasks have disapeared")
 		}
 		nodeToRescheduleOnto.tasks = append(nodeToRescheduleOnto.tasks, bootedTask)

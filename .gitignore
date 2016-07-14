@@ -3,6 +3,8 @@
 clusterdata-2011-2
 *.exe
 data
+out/old
+out/temp
 
 # Windows image file caches
 Thumbs.db
