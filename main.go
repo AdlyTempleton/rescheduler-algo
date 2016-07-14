@@ -24,20 +24,37 @@ type Task struct {
 
 }
 
-//TaskSorter allows a []*Task to be sorted using library methods
-type TaskSorter []*Task
+//ByStartTime allows a []*Task to be sorted by the start time of the tasks
+type ByStartTime []*Task
 
-func (tasks TaskSorter) Len() int{
+func (tasks ByStartTime) Len() int{
 	return len(tasks)
 }
 
-func (tasks TaskSorter) Swap(i, j int){
+func (tasks ByStartTime) Swap(i, j int){
 	tasks[i], tasks[j] = tasks[j], tasks[i]
 
 }
 
-func (tasks TaskSorter) Less(i, j int) bool {
+
+func (tasks ByStartTime) Less(i, j int) bool {
 	return tasks[i].start < tasks[j].start
+}
+
+//BySize allows a []*Task to be sorted by the maximum resource size
+type BySize []*Task
+
+func (tasks BySize) Len() int{
+	return len(tasks)
+}
+
+func (tasks BySize) Swap(i, j int){
+	tasks[i], tasks[j] = tasks[j], tasks[i]
+}
+
+func (tasks BySize) Less(i, j int) bool {
+	iMax, jMax := math.Max(tasks[i].cores, tasks[i].mem), math.Max(tasks[j].cores, tasks[j].mem)
+	return iMax < jMax
 }
 
 //lastJobID keeps track of the id of the most recently created job.
@@ -65,6 +82,12 @@ func (node *Node) usedResources()(cores float64, mem float64){
 func (node *Node) freeResources()(cores float64, mem float64){
 	usedCores, usedMemory := node.usedResources()
 	return node.cores - usedCores, node.mem - usedMemory
+}
+
+//couldFit determines whether a task could fit on a node
+func (node *Node) couldFit(task *Task)(bool){
+	freeMem, freeCores := node.freeResources()
+	return freeMem >= task.mem && freeCores >= task.cores
 }
 
 //removeTask deletes a task from a node
@@ -124,7 +147,7 @@ func newTask(mem float64, cores float64, priority int, start int, end int) *Task
 
 //realData loads a sorted list of Tasks from a file
 func realData(filename string, taskCount int) ([]*Task){
-	var tasks TaskSorter
+	var tasks ByStartTime
 	var currentTask *Task
 
 	file, _ := os.Open(filename)
@@ -219,6 +242,9 @@ var backgroundRescheduling bool
 //backgroundReschedulingThreshold controls the aggressiveness of the background rescheduler
 var backgroundReschedulingThreshold float64
 
+//computeOptimal controls the calculation of the optimal fit for the number of nodes required to offline schedule the task load
+var computeOptimal bool
+
 var downscaling bool
 
 //Main represents the main simulation loop
@@ -231,6 +257,7 @@ func main() {
 	taskCountPtr := flag.Int("taskCount", 1000000, "The number of tasks to load")
 	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 1, "Background Threshold")
 	filenamePtr := flag.String("file", "data/task_events_sorted.csv", "Filename to load data from")
+	computeOptimalPtr := flag.Bool("computeOptimal", false, "Compute nodes required to offline schedule a task load")
 
 	flag.Parse()
 
@@ -238,6 +265,7 @@ func main() {
 	backgroundRescheduling = *backgroundReschedulingPtr
 	backgroundReschedulingThreshold = *backgroundReschedulingThresholdPtr
 	downscaling = *downscalingPtr
+	computeOptimal = *computeOptimalPtr
 
 	time := 0
 
@@ -336,9 +364,17 @@ func main() {
 		//We increment time in increments of 5 minutes for performance's sake
 		time = time + 300
 
+
+
 		//Activate background rescheduling every hour
 		if backgroundRescheduling && time % 3600 == 0{
 			cluster = rescheduler.poll(time, cluster)
+		}
+
+		if computeOptimal{
+			fmt.Printf("FFD,%d,%d\n", findOptimalFit(cluster), time)
+			cpuTotal, memTotal := getTotalResourceUsage(cluster)
+			fmt.Printf("TotalResources,%f,%f,%d\n", cpuTotal, memTotal, time)
 		}
 
 		if downscaling {
@@ -356,17 +392,64 @@ func main() {
 	}
 }
 
+//findOptimalFit attempts to simulate an offline rescheduling of all tasks on a cluster
+//We use the offline bin-packing algorithm First Fit Decreasing (FFD), described by Garey et al. 1976
+//An extension of the standard first-fit-decreasing algorithm to multidimensional vector packing
+//This has a worst-case ratio of somewhere between 2 1/6 - 2 1/3 of the optimal packing
+func findOptimalFit(cluster []*Node)(binsNeeded int){
+	//Extract all tasks from the cluster
+	var tasks BySize
+
+	for _, node := range cluster{
+		for _, clusterTask := range node.tasks{
+			tasks = append(tasks, clusterTask)
+		}
+	}
+	sort.Sort(sort.Reverse(tasks))
+
+	var newCluster []*Node
+	newCluster = append(newCluster, standardNode())
+
+	//Create a new cluster, increasing as needed
+	outer:
+	for _, task := range tasks{
+		for _, node := range newCluster{
+			if node.couldFit(task){
+				node.tasks = append(node.tasks, task)
+				continue outer
+			}
+		}
+
+		//If no nodes can schedule this task, add another bin
+		newNode := standardNode()
+		newNode.tasks = append(newNode.tasks, task)
+		newCluster = append(newCluster, newNode)
+	}
+
+	return len(newCluster)
+}
+
 //getTotalUtilization calculates the utilization of the cluster in percentages
 func getTotalUtilization(cluster []*Node)(float64, float64){
 
-	var cpuUtilization, memUtilization float64
-	for _, node := range cluster{
-		cpuUtilizationDelta, memUtilizationDelta := node.getUtilization()
-		cpuUtilization, memUtilization = cpuUtilization + cpuUtilizationDelta, memUtilization + memUtilizationDelta
-	}
+	cpuUtilization, memUtilization := getTotalResourceUsage(cluster)
 
 	cpuUtilization = cpuUtilization / float64(len(cluster))
 	memUtilization = memUtilization / float64(len(cluster))
 
 	return cpuUtilization, memUtilization
+}
+
+//getTotalResourceUsage returns the total sum of all resources across all tasks
+func getTotalResourceUsage(cluster []*Node)(float64, float64){
+
+	var cpuUtilization, memUtilization float64
+
+	for _, node := range cluster{
+		cpuUtilizationDelta, memUtilizationDelta := node.getUtilization()
+		cpuUtilization, memUtilization = cpuUtilization + cpuUtilizationDelta * node.cores, memUtilization + memUtilizationDelta * node.mem
+	}
+
+	return cpuUtilization, memUtilization
+
 }
