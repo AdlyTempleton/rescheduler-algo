@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"math"
 	"sort"
+	"log"
+	"runtime/pprof"
 )
 
 type Task struct {
@@ -262,6 +264,7 @@ func main() {
 	computeOptimalPtr := flag.Bool("computeOptimal", false, "Compute nodes required to offline schedule a task load")
 	tolerancePtr := flag.Int64("tolerance", 43200, "Time required before upscaling. Guards against short spikes")
 	clusterSizePtr := flag.Int("clusterSize", 100, "Initial size of the cluster")
+	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flag.Parse()
 
 	preemptiveRescheduling = *preemptiveReschedulingPtr
@@ -271,6 +274,16 @@ func main() {
 	tolerance = *tolerancePtr
 	computeOptimal = *computeOptimalPtr
 	clusterSize := *clusterSizePtr
+
+	//Handle profiling
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 
 	time := 0
 
@@ -384,9 +397,11 @@ func main() {
 
 		if computeOptimal{
 			fmt.Printf("FFD,%d,%d\n", findOptimalFit(cluster), time)
-			cpuTotal, memTotal := getTotalResourceUsage(cluster)
-			fmt.Printf("TotalResources,%f,%f,%d\n", cpuTotal, memTotal, time)
 		}
+
+
+		cpuTotal, memTotal := getTotalResourceUsage(cluster)
+		fmt.Printf("TotalResources,%f,%f,%d\n", cpuTotal, memTotal, time)
 
 		if downscaling {
 			cluster = downscaler.poll(time, cluster)
