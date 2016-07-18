@@ -22,11 +22,8 @@ func (basicRescheduler) poll(time int, cluster []*Node)([]*Node){
 			for _, candidateNode := range cluster{
 				//Ensure that there are enough free resources on the candidate node
 				//There are always enough free resources on the task's home node
-				freeCores, freeMem := node.freeResources()
-				freeMem = freeMem + task.mem
-				freeCores = freeCores + task.cores
 
-				if candidateNode == node || (freeCores >= task.cores && freeMem >= task.mem) {
+				if candidateNode == node || candidateNode.couldFit(task) {
 					var priority float64
 					if candidateNode == node {
 						priority = float64(balancedResourcePriorityExcluding(task, candidateNode, task) + leastRequestedPriorityExcluding(task, candidateNode, task)) + backgroundReschedulingThreshold
@@ -48,6 +45,7 @@ func (basicRescheduler) poll(time int, cluster []*Node)([]*Node){
 			}
 
 			if maxPriorityNode != node{
+
 				//Delete the old task fom the node's task list
 				removedTask := node.removeTask(index - deleted)
 
@@ -59,10 +57,10 @@ func (basicRescheduler) poll(time int, cluster []*Node)([]*Node){
 						}
 					}
 				}
+
 				//Add the new task to the node's task list
 				maxPriorityNode.tasks = append(maxPriorityNode.tasks, task)
 				deleted++
-
 				fmt.Printf("BackgroundReschedule,%d,%f,%f,%s,%s,%d\n", task.jobID, task.cores, task.mem, maxPriorityNode.name, node.name, time)
 			}
 		}
@@ -85,7 +83,7 @@ func (basicRescheduler) rescheduleFailedTask (taskToAccomodate *Task, cluster []
 
 			if freeCores >= taskToAccomodate.cores && freeMem >= taskToAccomodate.mem {
 				//Check to make sure the task can be rescheduled
-				if potentialNode, _, _ := scheduler.schedule(task, cluster); potentialNode != nil{
+				if potentialNode, _, _ := scheduler.schedule(task, cluster); potentialNode != nil && potentialNode != node{
 					priority := balancedResourcePriorityExcluding(task, node, taskToAccomodate) + leastRequestedPriorityExcluding(task, node, taskToAccomodate)
 					if priority > maxPriority{
 						maxPriorityNode, maxPriorityTaskIndex = node, i

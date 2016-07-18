@@ -16,9 +16,7 @@ func (K8sScheduler) schedule (task *Task, cluster []*Node) (node *Node, priority
 
 	for _, node := range cluster {
 
-		freeCores, freeMem := node.freeResources()
-		freeCores, freeMem = freeCores - task.cores, freeMem - task.mem
-		if freeCores > 0 && freeMem > 0 {
+		if node.couldFit(task) {
 			priority := balancedResourcePriority(task, node) + leastRequestedPriority(task, node)
 			if priority > maxPriority {
 				maxPriority = priority

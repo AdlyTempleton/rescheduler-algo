@@ -86,7 +86,7 @@ func (node *Node) freeResources()(cores float64, mem float64){
 
 //couldFit determines whether a task could fit on a node
 func (node *Node) couldFit(task *Task)(bool){
-	freeMem, freeCores := node.freeResources()
+	freeCores, freeMem := node.freeResources()
 	return freeMem >= task.mem && freeCores >= task.cores
 }
 
@@ -105,17 +105,13 @@ func (node *Node) clone()(*Node){
 }
 
 //getUtilization returns two floats which represent the percentage utilization of cpu and memory, respectively
-func (node *Node) getUtilization()(cores, mem float64){
-
-	for _, task := range node.tasks{
-		cores = cores + task.cores
-		mem = mem + task.mem
-	}
+func (node *Node) getUtilization()(float64, float64){
 
 	//Take the percentages
+	cores, mem := node.usedResources()
 	cores = cores / node.cores
 	mem = mem / node.mem
-	return
+	return cores, mem
 }
 
 //Scheduler represents an interface to implement different scheduling policies
@@ -247,6 +243,9 @@ var computeOptimal bool
 
 var downscaling bool
 
+//tolerance represents the consecutive time period a node must be pending for in order to upscale
+var tolerance int64
+
 //Main represents the main simulation loop
 func main() {
 
@@ -258,6 +257,7 @@ func main() {
 	backgroundReschedulingThresholdPtr := flag.Float64("threshold", 1, "Background Threshold")
 	filenamePtr := flag.String("file", "data/task_events_sorted.csv", "Filename to load data from")
 	computeOptimalPtr := flag.Bool("computeOptimal", false, "Compute nodes required to offline schedule a task load")
+	tolerancePtr := flag.Int64("tolerance", 43200, "Time required before upscaling. Guards against short spikes")
 
 	flag.Parse()
 
@@ -265,6 +265,7 @@ func main() {
 	backgroundRescheduling = *backgroundReschedulingPtr
 	backgroundReschedulingThreshold = *backgroundReschedulingThresholdPtr
 	downscaling = *downscalingPtr
+	tolerance = *tolerancePtr
 	computeOptimal = *computeOptimalPtr
 
 	time := 0
@@ -286,6 +287,9 @@ func main() {
 	var scheduler Scheduler = K8sScheduler{}
 	var rescheduler Rescheduler = basicRescheduler{}
 	var downscaler Rescheduler = basicDownscaler{}
+
+	//Keep track of the time for while tasks have failed to schedule
+	var pendingQueueTime int64 = 0
 
 	//Main simulation loop
 	for true{
@@ -320,22 +324,13 @@ func main() {
 			}
 		}
 
-		//Print the total resource requirements of all tasks scheduled at time=0
-		if time == 0 {
-			var mem, cpu float64
-			for _, task := range schedulerQueue{
-				mem = mem + task.mem
-				cpu = cpu + task.cores
-			}
-			fmt.Printf("Total 0-second sums: %f %f\n", cpu, mem)
-		}
-
 		//Schedule all tasks in the queue
 		//Failed tasks go back into the queue
-		var failedQueue []*Task
 
 		//Procede through the queue and schedule each task
-		for _, task := range schedulerQueue {
+
+		areNodesPending := false
+		for i, task := range schedulerQueue {
 			//Initial attempt at standard scheduling
 			var node *Node
 			node, _, err := scheduler.schedule(task, cluster)
@@ -347,19 +342,31 @@ func main() {
 
 				//Return the failed task to the queue and upscale the cluster
 				if err != nil{
-					failedQueue = append(failedQueue, task)
-					//Upscale
-					cluster = append(cluster, standardNodeCluster(10)...)
+					pendingQueueTime += 300
+					areNodesPending = true
+					schedulerQueue = schedulerQueue[i:]
 
-					cpuUtilization, memUtilization := getTotalUtilization(cluster)
-					fmt.Printf("Up,%d,%f,%f,%d\n", len(cluster), cpuUtilization, memUtilization, time)
+					if pendingQueueTime > tolerance{
+						//Upscale
+						cluster = append(cluster, standardNodeCluster(10)...)
+
+						cpuUtilization, memUtilization := getTotalUtilization(cluster)
+						fmt.Printf("Up,%d,%f,%f,%d\n", len(cluster), cpuUtilization, memUtilization, time)
+					}
+					break
 				}
+
 			}else {
 				node.tasks = append(node.tasks, task)
 			}
 		}
-		//Use failedQueue in the next pass
-		schedulerQueue = failedQueue
+
+		//If we made it through the queue, reset pendingQueueTime
+		if !areNodesPending{
+			schedulerQueue = []*Task{}
+			pendingQueueTime = 0
+		}
+
 
 		//We increment time in increments of 5 minutes for performance's sake
 		time = time + 300
@@ -387,6 +394,10 @@ func main() {
 
 		//End the simulation after a month
 		if time > 3000000{
+			for _, node := range cluster{
+				nodeCPU, nodeMem := node.getUtilization()
+				fmt.Printf("NodeAtEnd,%s,%f,%f,%d\n", node.name, nodeCPU, nodeMem, len(node.tasks))
+			}
 			break
 		}
 	}
