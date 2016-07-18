@@ -246,6 +246,9 @@ var downscaling bool
 //tolerance represents the consecutive time period a node must be pending for in order to upscale
 var tolerance int64
 
+//The initial cluster size
+var clusterSize int64
+
 //Main represents the main simulation loop
 func main() {
 
@@ -258,7 +261,7 @@ func main() {
 	filenamePtr := flag.String("file", "data/task_events_sorted.csv", "Filename to load data from")
 	computeOptimalPtr := flag.Bool("computeOptimal", false, "Compute nodes required to offline schedule a task load")
 	tolerancePtr := flag.Int64("tolerance", 43200, "Time required before upscaling. Guards against short spikes")
-
+	clusterSizePtr := flag.Int("clusterSize", 100, "Initial size of the cluster")
 	flag.Parse()
 
 	preemptiveRescheduling = *preemptiveReschedulingPtr
@@ -267,6 +270,7 @@ func main() {
 	downscaling = *downscalingPtr
 	tolerance = *tolerancePtr
 	computeOptimal = *computeOptimalPtr
+	clusterSize := *clusterSizePtr
 
 	time := 0
 
@@ -281,7 +285,7 @@ func main() {
 
 	//Initialize an auto-scaling cluster
 	var cluster []*Node
-	cluster = standardNodeCluster(100)
+	cluster = standardNodeCluster(clusterSize)
 
 	//Use the appropriate scheduling and rescheduling algorithms
 	var scheduler Scheduler = K8sScheduler{}
