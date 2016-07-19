@@ -22,7 +22,7 @@ func (basicDownscaler) poll(time int, cluster []*Node) ([]*Node){
 		//Note that this net value is likely negative
 		var maxNode *Node = nil
 		var maxNewCluster []*Node= nil
-		maxNodePriority := math.MinInt64
+		var maxNodePriority int64 = math.MinInt64
 
 		for candidateNodeIndex, candidateNode := range cluster{
 			candidatePriority, newClusterState := calculateDownscalePriority(candidateNode, candidateNodeIndex, cluster)
@@ -43,7 +43,7 @@ func (basicDownscaler) poll(time int, cluster []*Node) ([]*Node){
 
 //Calculate the total net priority change from rescheduling all pods on a node
 //It returns the net priority difference from rescheduling all pods off this node, and the simulated state of the cluster after rescheduling
-func calculateDownscalePriority(candidateNode *Node, candidateNodeIndex int, cluster []*Node)(int, []*Node){
+func calculateDownscalePriority(candidateNode *Node, candidateNodeIndex int, cluster []*Node)(int64, []*Node){
 	//Create a deep copy of the cluster minus the candidate node
 	var clusterExcluding []*Node
 	for _, srcNode := range cluster{
@@ -52,7 +52,7 @@ func calculateDownscalePriority(candidateNode *Node, candidateNodeIndex int, clu
 		}
 	}
 
-	netPriority := 0
+	var netPriority int64 = 0
 
 	for _, taskToReschedule := range candidateNode.tasks{
 		newNode, newNodePriority, err := K8sScheduler{}.schedule(taskToReschedule, clusterExcluding)
@@ -65,7 +65,7 @@ func calculateDownscalePriority(candidateNode *Node, candidateNodeIndex int, clu
 			//So that currentPriority can be accurately computed
 			newNode.tasks = append(newNode.tasks, taskToReschedule)
 			currentPriority := balancedResourcePriorityExcluding(taskToReschedule, candidateNode, taskToReschedule) + leastRequestedPriorityExcluding(taskToReschedule, candidateNode, taskToReschedule)
-			netPriority = netPriority + newNodePriority - currentPriority
+			netPriority = netPriority + int64(newNodePriority) - int64(currentPriority)
 		}
 	}
 
