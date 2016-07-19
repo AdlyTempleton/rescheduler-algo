@@ -225,7 +225,7 @@ func standardNodeCluster(count int) (cluster []*Node){
 //standardNode returns a standardized node with resource values equal to Google's largest node
 func standardNode() *Node{
 	nodeIndex++
-	return &Node{strconv.Itoa(nodeIndex), nil, 1, 1}
+	return &Node{strconv.Itoa(nodeIndex), nil, nodeSize, nodeSize}
 }
 
 //nodeIndex keeps track of the id of the most recently created Node
@@ -251,6 +251,9 @@ var tolerance int64
 //The initial cluster size
 var clusterSize int64
 
+//nodeSize represents the normalized size of all nodes
+var nodeSize float64
+
 //Main represents the main simulation loop
 func main() {
 
@@ -264,6 +267,7 @@ func main() {
 	computeOptimalPtr := flag.Bool("computeOptimal", false, "Compute nodes required to offline schedule a task load")
 	tolerancePtr := flag.Int64("tolerance", 43200, "Time required before upscaling. Guards against short spikes")
 	clusterSizePtr := flag.Int("clusterSize", 100, "Initial size of the cluster")
+	nodeSizePtr := flag.Float64("nodeSize", 1, "Normalized size of all nodes")
 	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 	flag.Parse()
 
@@ -274,6 +278,7 @@ func main() {
 	tolerance = *tolerancePtr
 	computeOptimal = *computeOptimalPtr
 	clusterSize := *clusterSizePtr
+	nodeSize := *nodeSizePtr
 
 	//Handle profiling
 	if *cpuprofile != "" {
