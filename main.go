@@ -171,8 +171,8 @@ func realData(filename string, taskCount int) ([]*Task){
 			cpu, _ := strconv.ParseFloat(record[10], 64)
 
 			//Account for malformed data with resources values over 100%
-			mem = math.Min(mem, 1)
-			cpu = math.Min(cpu, 1)
+			mem = math.Min(mem, nodeSize)
+			cpu = math.Min(cpu, nodeSize)
 
 			startTime, _ := strconv.Atoi(record[0])
 
@@ -278,7 +278,7 @@ func main() {
 	tolerance = *tolerancePtr
 	computeOptimal = *computeOptimalPtr
 	clusterSize := *clusterSizePtr
-	nodeSize := *nodeSizePtr
+	nodeSize = *nodeSizePtr
 
 	//Handle profiling
 	if *cpuprofile != "" {
